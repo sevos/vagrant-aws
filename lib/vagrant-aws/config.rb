@@ -92,6 +92,11 @@ module VagrantPlugins
       # @return [String]
       attr_accessor :elb
 
+      # An EBS volume to attach to the machine.
+      #
+      # @return [Hash<String, String>]
+      attr_accessor :ebs_volume
+
       def initialize(region_specific=false)
         @access_key_id      = UNSET_VALUE
         @ami                = UNSET_VALUE
