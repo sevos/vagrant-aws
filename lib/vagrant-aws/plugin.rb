@@ -24,6 +24,15 @@ module VagrantPlugins
         Config
       end
 
+      config(:elb) do
+        require_relative "elb/config"
+        ELB::Config
+      end
+
+      action_hook(:aws, :machine_action_up) do |hook|
+        hook.prepend(Action::SetupLoadBalancer)
+      end
+
       provider(:aws, parallel: true) do
         # Setup logging and i18n
         setup_logging
