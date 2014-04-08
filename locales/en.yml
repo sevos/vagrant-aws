@@ -90,17 +90,14 @@ en:
         Host path: %{hostpath}
         Guest path: %{guestpath}
         Error: %{stderr}
-<<<<<<< HEAD
       elb_does_not_exist: |-
         ELB configured for the instance does not exist
-=======
       mkdir_error: |-
         There was an error when attempting to create a shared host folder.
         Please inspect the error message below for more info.
 
         Host path: %{hostpath}
         Error: %{err}
->>>>>>> mitchellh/master
 
     states:
       short_not_created: |-
