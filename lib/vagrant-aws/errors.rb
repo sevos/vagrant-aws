@@ -11,6 +11,10 @@ module VagrantPlugins
         error_key(:fog_error)
       end
 
+      class InternalFogError < VagrantAWSError
+        error_key(:internal_fog_error)
+      end
+
       class InstanceReadyTimeout < VagrantAWSError
         error_key(:instance_ready_timeout)
       end
@@ -21,6 +25,10 @@ module VagrantPlugins
 
       class ElbDoesNotExistError < VagrantAWSError
         error_key("elb_does_not_exist")
+      end
+
+      class MkdirError < VagrantAWSError
+        error_key(:mkdir_error)
       end
     end
   end

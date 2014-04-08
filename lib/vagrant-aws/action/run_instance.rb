@@ -1,4 +1,5 @@
 require "log4r"
+require 'json'
 
 require 'vagrant/util/retryable'
 
@@ -24,16 +25,23 @@ module VagrantPlugins
           region = env[:machine].provider_config.region
 
           # Get the configs
-          region_config      = env[:machine].provider_config.get_region_config(region)
-          ami                = region_config.ami
-          availability_zone  = region_config.availability_zone
-          instance_type      = region_config.instance_type
-          keypair            = region_config.keypair_name
-          private_ip_address = region_config.private_ip_address
-          security_groups    = region_config.security_groups
-          subnet_id          = region_config.subnet_id
-          tags               = region_config.tags
-          user_data          = region_config.user_data
+          region_config         = env[:machine].provider_config.get_region_config(region)
+          ami                   = region_config.ami
+          availability_zone     = region_config.availability_zone
+          instance_type         = region_config.instance_type
+          keypair               = region_config.keypair_name
+          private_ip_address    = region_config.private_ip_address
+          security_groups       = region_config.security_groups
+          subnet_id             = region_config.subnet_id
+          tags                  = region_config.tags
+          user_data             = region_config.user_data
+          block_device_mapping  = region_config.block_device_mapping
+          elastic_ip            = region_config.elastic_ip
+          terminate_on_shutdown = region_config.terminate_on_shutdown
+          iam_instance_profile_arn  = region_config.iam_instance_profile_arn
+          iam_instance_profile_name = region_config.iam_instance_profile_name
+          monitoring            = region_config.monitoring
+          ebs_optimized         = region_config.ebs_optimized
           ebs_volume         = region_config.ebs_volume
 
           # If there is no keypair then warn the user
@@ -42,7 +50,7 @@ module VagrantPlugins
           end
 
           # If there is a subnet ID then warn the user
-          if subnet_id
+          if subnet_id && !elastic_ip
             env[:ui].warn(I18n.t("vagrant_aws.launch_vpc_warning"))
           end
 
@@ -54,27 +62,43 @@ module VagrantPlugins
           env[:ui].info(" -- Availability Zone: #{availability_zone}") if availability_zone
           env[:ui].info(" -- Keypair: #{keypair}") if keypair
           env[:ui].info(" -- Subnet ID: #{subnet_id}") if subnet_id
+          env[:ui].info(" -- IAM Instance Profile ARN: #{iam_instance_profile_arn}") if iam_instance_profile_arn
+          env[:ui].info(" -- IAM Instance Profile Name: #{iam_instance_profile_name}") if iam_instance_profile_name
           env[:ui].info(" -- Private IP: #{private_ip_address}") if private_ip_address
+          env[:ui].info(" -- Elastic IP: #{elastic_ip}") if elastic_ip
           env[:ui].info(" -- User Data: yes") if user_data
           env[:ui].info(" -- Security Groups: #{security_groups.inspect}") if !security_groups.empty?
           env[:ui].info(" -- User Data: #{user_data}") if user_data
+          env[:ui].info(" -- Block Device Mapping: #{block_device_mapping}") if block_device_mapping
+          env[:ui].info(" -- Terminate On Shutdown: #{terminate_on_shutdown}")
+          env[:ui].info(" -- Monitoring: #{monitoring}")
+          env[:ui].info(" -- EBS optimized: #{ebs_optimized}")
+          env[:ui].info(" -- EBS volume: #{ebs_volume}")
+
+          options = {
+            :availability_zone         => availability_zone,
+            :flavor_id                 => instance_type,
+            :image_id                  => ami,
+            :key_name                  => keypair,
+            :private_ip_address        => private_ip_address,
+            :subnet_id                 => subnet_id,
+            :iam_instance_profile_arn  => iam_instance_profile_arn,
+            :iam_instance_profile_name => iam_instance_profile_name,
+            :tags                      => tags,
+            :user_data                 => user_data,
+            :block_device_mapping      => block_device_mapping,
+            :instance_initiated_shutdown_behavior => terminate_on_shutdown == true ? "terminate" : nil,
+            :monitoring                => monitoring,
+            :ebs_optimized             => ebs_optimized,
+            :ebs_volume                => ebs_volume
+          }
+          if !security_groups.empty?
+            security_group_key = options[:subnet_id].nil? ? :groups : :security_group_ids
+            options[security_group_key] = security_groups
+          end
 
           begin
-            options = {
-              :availability_zone  => availability_zone,
-              :flavor_id          => instance_type,
-              :image_id           => ami,
-              :key_name           => keypair,
-              :private_ip_address => private_ip_address,
-              :subnet_id          => subnet_id,
-              :tags               => tags,
-              :user_data          => user_data
-            }
-
-            if !security_groups.empty?
-              security_group_key = options[:subnet_id].nil? ? :groups : :security_group_ids
-              options[security_group_key] = security_groups
-            end
+            env[:ui].warn(I18n.t("vagrant_aws.warn_ssh_access")) unless allows_ssh_port?(env, security_groups, subnet_id)
 
             server = env[:aws_compute].servers.create(options)
           rescue Fog::Compute::AWS::NotFound => e
@@ -88,6 +112,10 @@ module VagrantPlugins
             raise
           rescue Fog::Compute::AWS::Error => e
             raise Errors::FogError, :message => e.message
+          rescue Excon::Errors::HTTPStatusError => e
+            raise Errors::InternalFogError,
+              :error => e.message,
+              :response => e.response.body
           end
 
           # Immediately save the ID since it is created at this point.
@@ -117,6 +145,12 @@ module VagrantPlugins
           end
 
           @logger.info("Time to instance ready: #{env[:metrics]["instance_ready_time"]}")
+
+          # Allocate and associate an elastic IP if requested
+          if elastic_ip
+            domain = subnet_id ? 'vpc' : 'standard'
+            do_elastic_ip(env, domain, server)
+          end
 
           if !env[:interrupted]
             env[:metrics]["instance_ssh_time"] = Util::Timer.time do
@@ -153,6 +187,55 @@ module VagrantPlugins
           if env[:machine].provider.state.id != :not_created
             # Undo the import
             terminate(env)
+          end
+        end
+
+        def allows_ssh_port?(env, test_sec_groups, is_vpc)
+          port = 22 # TODO get ssh_info port
+          test_sec_groups = [ "default" ] if test_sec_groups.empty? # AWS default security group
+          # filter groups by name or group_id (vpc)
+          groups = test_sec_groups.map do |tsg|
+            env[:aws_compute].security_groups.all.select { |sg| tsg == (is_vpc ? sg.group_id : sg.name) }
+          end.flatten
+          # filter TCP rules
+          rules = groups.map { |sg| sg.ip_permissions.select { |r| r["ipProtocol"] == "tcp" } }.flatten
+          # test if any range includes port
+          !rules.select { |r| (r["fromPort"]..r["toPort"]).include?(port) }.empty?
+        end
+
+        def do_elastic_ip(env, domain, server)
+          begin
+            allocation = env[:aws_compute].allocate_address(domain)
+          rescue
+            @logger.debug("Could not allocate Elastic IP.")
+            terminate(env)
+            raise Errors::FogError,
+                            :message => "Could not allocate Elastic IP."
+          end
+          @logger.debug("Public IP #{allocation.body['publicIp']}")
+
+          # Associate the address and save the metadata to a hash
+          if domain == 'vpc'
+            # VPC requires an allocation ID to assign an IP
+            association = env[:aws_compute].associate_address(server.id, nil, nil, allocation.body['allocationId'])
+            h = { :allocation_id => allocation.body['allocationId'], :association_id => association.body['associationId'], :public_ip => allocation.body['publicIp'] }
+          else
+            # Standard EC2 instances only need the allocated IP address
+            association = env[:aws_compute].associate_address(server.id, allocation.body['publicIp'])
+            h = { :public_ip => allocation.body['publicIp'] }
+          end
+
+          unless association.body['return']
+            @logger.debug("Could not associate Elastic IP.")
+            terminate(env)
+            raise Errors::FogError,
+                            :message => "Could not allocate Elastic IP."
+          end
+
+          # Save this IP to the data dir so it can be released when the instance is destroyed
+          ip_file = env[:machine].data_dir.join('elastic_ip')
+          ip_file.open('w+') do |f|
+            f.write(h.to_json)
           end
         end
 

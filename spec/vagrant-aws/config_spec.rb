@@ -26,9 +26,17 @@ describe VagrantPlugins::AWS::Config do
     its("secret_access_key") { should be_nil }
     its("security_groups")   { should == [] }
     its("subnet_id")         { should be_nil }
+    its("iam_instance_profile_arn") { should be_nil }
+    its("iam_instance_profile_name") { should be_nil }
     its("tags")              { should == {} }
     its("user_data")         { should be_nil }
     its("use_iam_profile")   { should be_false }
+    its("block_device_mapping")  {should == [] }
+    its("elastic_ip")        { should be_nil }
+    its("terminate_on_shutdown") { should == false }
+    its("ssh_host_attribute") { should be_nil }
+    its("monitoring")        { should == false }
+    its("ebs_optimized")     { should == false }
   end
 
   describe "overriding defaults" do
@@ -37,16 +45,22 @@ describe VagrantPlugins::AWS::Config do
     # each of these attributes to "foo" in isolation, and reads the value
     # and asserts the proper result comes back out.
     [:access_key_id, :ami, :availability_zone, :instance_ready_timeout,
-      :instance_type, :keypair_name,
-      :region, :secret_access_key, :security_groups,
-      :subnet_id, :tags,
-      :use_iam_profile, :user_data].each do |attribute|
+      :instance_type, :keypair_name, :ssh_host_attribute, :ebs_optimized,
+      :region, :secret_access_key, :monitoring,
+      :subnet_id, :tags, :elastic_ip, :terminate_on_shutdown,
+      :iam_instance_profile_arn, :iam_instance_profile_name,
+      :use_iam_profile, :user_data, :block_device_mapping].each do |attribute|
 
       it "should not default #{attribute} if overridden" do
         instance.send("#{attribute}=".to_sym, "foo")
         instance.finalize!
         instance.send(attribute).should == "foo"
       end
+    end
+    it "should not default security_groups if overridden" do
+      instance.security_groups = "foo"
+      instance.finalize!
+      instance.security_groups.should == ["foo"]
     end
   end
 
@@ -182,15 +196,19 @@ describe VagrantPlugins::AWS::Config do
       let(:first)  { described_class.new }
       let(:second) { described_class.new }
 
-      it "should merge the tags" do
+      it "should merge the tags and block_device_mappings" do
         first.tags["one"] = "one"
         second.tags["two"] = "two"
+        first.block_device_mapping = [{:one => "one"}]
+        second.block_device_mapping = [{:two => "two"}]
 
         third = first.merge(second)
         third.tags.should == {
           "one" => "one",
           "two" => "two"
         }
+        third.block_device_mapping.index({:one => "one"}).should_not be_nil
+        third.block_device_mapping.index({:two => "two"}).should_not be_nil
       end
     end
   end

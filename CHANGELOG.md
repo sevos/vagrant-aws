@@ -1,4 +1,25 @@
-# 0.3.0 (unreleased)
+# 0.5.0 (unreleased)
+
+# 0.4.1 (December 17, 2013)
+
+* Update fog.io to 1.18.0
+* Fix sync folder user permissions (GH #175)
+* Fix vagrant < 1.3.0 provisioner compatibility (GH #173)
+* Add vagrant 1.4.0 multiple SSH key support (GH #172)
+* Fix EIP deallocation bug (GH #164)
+* Add (per shared folder) rsync exclude flag (GH #156)
+
+# 0.4.0 (October 11, 2013)
+
+* Handle EIP allocation error (GH #134)
+* Implement halt and reload (GH #31)
+* rsync ignores Vagrantfile
+* warn if none of the security groups allows incoming SSH
+* bump fog.io to 1.15.0
+* Fix rsync on windows (GH #77)
+* Add `ssh_host_attribute` config (GH #143)
+
+# 0.3.0 (September 2, 2013)
 
 * Parallelize multi-machine up on Vagrant 1.2+
 * Show proper configuration errors if an invalid configuration key
@@ -6,6 +27,13 @@
 * Request confirmation on `vagrant destroy`, like normal VirtualBox + Vagrant.
 * If user data is configured, output is shown on "vagrant up" that
   it is being set.
+* Add EIP support (GH #65)
+* Add block device mapping support (GH #93)
+* README improvements (GH #120)
+* Fix missing locale message (GH #73)
+* SyncFolders creates hostpath if it doesn't exist and `:create` option is set (GH #17)
+* Add IAM Instance Profile support (GH #68)
+* Add shutdown behavior support (GH #125,#131)
 
 # 0.2.2 (April 18, 2013)
 

@@ -1,5 +1,13 @@
 # Vagrant AWS Provider
 
+<span class="badges">
+[![Gem Version](https://badge.fury.io/rb/vagrant-aws.png)][gem]
+[![Dependency Status](https://gemnasium.com/mitchellh/vagrant-aws.png)][gemnasium]
+</span>
+
+[gem]: https://rubygems.org/gems/vagrant-aws
+[gemnasium]: https://gemnasium.com/mitchellh/vagrant-aws
+
 This is a [Vagrant](http://www.vagrantup.com) 1.2+ plugin that adds an [AWS](http://aws.amazon.com)
 provider to Vagrant, allowing Vagrant to control and provision machines in
 EC2 and VPC.
@@ -108,6 +116,10 @@ This provider exposes quite a few provider-specific configuration options:
 * `security_groups` - An array of security groups for the instance. If this
   instance will be launched in VPC, this must be a list of security group
   IDs.
+* `iam_instance_profile_arn` - The Amazon resource name (ARN) of the IAM Instance
+    Profile to associate with the instance
+* `iam_instance_profile_name` - The name of the IAM Instance Profile to associate
+  with the instance
 * `subnet_id` - The subnet to boot the instance into, for VPC.
 * `tags` - A hash of tags to set on the machine.
 * `use_iam_profile` - If true, will use [IAM profiles](http://docs.aws.amazon.com/IAM/latest/UserGuide/instance-profiles.html)
@@ -243,8 +255,11 @@ $ bundle exec rake
 If those pass, you're ready to start developing the plugin. You can test
 the plugin without installing it into your Vagrant environment by just
 creating a `Vagrantfile` in the top level of this directory (it is gitignored)
-that uses it, and uses bundler to execute Vagrant:
-
+and add the following line to your `Vagrantfile` 
+```ruby
+Vagrant.require_plugin "vagrant-aws"
+```
+Use bundler to execute Vagrant:
 ```
 $ bundle exec vagrant up --provider=aws
 ```

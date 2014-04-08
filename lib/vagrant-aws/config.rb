@@ -39,6 +39,11 @@ module VagrantPlugins
       # @return [String]
       attr_accessor :private_ip_address
 
+      # Acquire and attach an elastic IP address (VPC).
+      #
+      # @return [Boolean]
+      attr_accessor :elastic_ip
+
       # The name of the AWS region in which to create the instance.
       #
       # @return [String]
@@ -63,7 +68,19 @@ module VagrantPlugins
       # be a list of IDs. For EC2, it can be either.
       #
       # @return [Array<String>]
-      attr_accessor :security_groups
+      attr_reader :security_groups
+
+      # The Amazon resource name (ARN) of the IAM Instance Profile
+      # to associate with the instance.
+      #
+      # @return [String]
+      attr_accessor :iam_instance_profile_arn
+
+      # The name of the IAM Instance Profile to associate with
+      # the instance.
+      #
+      # @return [String]
+      attr_accessor :iam_instance_profile_name
 
       # The subnet ID to launch the machine into (VPC).
       #
@@ -97,24 +114,63 @@ module VagrantPlugins
       # @return [Hash<String, String>]
       attr_accessor :ebs_volume
 
+      # Block device mappings
+      #
+      # @return [Array<Hash>]
+      attr_accessor :block_device_mapping
+
+      # Indicates whether an instance stops or terminates when you initiate shutdown from the instance
+      #
+      # @return [bool]
+      attr_accessor :terminate_on_shutdown
+
+      # Specifies which address to connect to with ssh
+      # Must be one of:
+      #  - :public_ip_address
+      #  - :dns_name
+      #  - :private_ip_address
+      # This attribute also accepts an array of symbols
+      #
+      # @return [Symbol]
+      attr_accessor :ssh_host_attribute
+
+      # Enables Monitoring
+      #
+      # @return [Boolean]
+      attr_accessor :monitoring
+
+      # EBS optimized instance
+      #
+      # @return [Boolean]
+      attr_accessor :ebs_optimized
+
       def initialize(region_specific=false)
-        @access_key_id      = UNSET_VALUE
-        @ami                = UNSET_VALUE
-        @availability_zone  = UNSET_VALUE
+        @access_key_id          = UNSET_VALUE
+        @ami                    = UNSET_VALUE
+        @availability_zone      = UNSET_VALUE
         @instance_ready_timeout = UNSET_VALUE
-        @instance_type      = UNSET_VALUE
-        @keypair_name       = UNSET_VALUE
-        @private_ip_address = UNSET_VALUE
-        @region             = UNSET_VALUE
-        @endpoint           = UNSET_VALUE
-        @version            = UNSET_VALUE
-        @secret_access_key  = UNSET_VALUE
-        @security_groups    = UNSET_VALUE
-        @subnet_id          = UNSET_VALUE
-        @tags               = {}
-        @user_data          = UNSET_VALUE
+        @instance_type          = UNSET_VALUE
+        @keypair_name           = UNSET_VALUE
+        @private_ip_address     = UNSET_VALUE
+        @region                 = UNSET_VALUE
+        @endpoint               = UNSET_VALUE
+        @version                = UNSET_VALUE
+        @secret_access_key      = UNSET_VALUE
+        @security_groups        = UNSET_VALUE
+        @subnet_id              = UNSET_VALUE
+        @tags                   = {}
+        @user_data              = UNSET_VALUE
         @elb                = UNSET_VALUE
-        @use_iam_profile    = UNSET_VALUE
+        @elb_volume         = UNSET_VALUE
+        @use_iam_profile        = UNSET_VALUE
+        @block_device_mapping   = []
+        @elastic_ip             = UNSET_VALUE
+        @iam_instance_profile_arn  = UNSET_VALUE
+        @iam_instance_profile_name = UNSET_VALUE
+        @terminate_on_shutdown  = UNSET_VALUE
+        @ssh_host_attribute     = UNSET_VALUE
+        @monitoring             = UNSET_VALUE
+        @ebs_optimized          = UNSET_VALUE
 
         # Internal state (prefix with __ so they aren't automatically
         # merged)
@@ -122,6 +178,12 @@ module VagrantPlugins
         @__finalized = false
         @__region_config = {}
         @__region_specific = region_specific
+      end
+
+      # set security_groups
+      def security_groups=(value)
+        # convert value to array if necessary
+        @security_groups = value.is_a?(Array) ? value : [value]
       end
 
       # Allows region-specific overrides of any of the settings on this
@@ -165,7 +227,7 @@ module VagrantPlugins
           # has it.
           new_region_specific = other.instance_variable_get(:@__region_specific)
           result.instance_variable_set(
-            :@__region_specific, new_region_specific || @__region_specific)
+          :@__region_specific, new_region_specific || @__region_specific)
 
           # Go through all the region configs and prepend ours onto
           # theirs.
@@ -181,6 +243,10 @@ module VagrantPlugins
           # Merge in the tags
           result.tags.merge!(self.tags)
           result.tags.merge!(other.tags)
+
+          # Merge block_device_mapping
+          result.block_device_mapping |= self.block_device_mapping
+          result.block_device_mapping |= other.block_device_mapping
         end
       end
 
@@ -205,6 +271,9 @@ module VagrantPlugins
         # Default the private IP to nil since VPC is not default
         @private_ip_address = nil if @private_ip_address == UNSET_VALUE
 
+        # Acquire an elastic IP if requested
+        @elastic_ip = nil if @elastic_ip == UNSET_VALUE
+
         # Default region is us-east-1. This is sensible because AWS
         # generally defaults to this as well.
         @region = "us-east-1" if @region == UNSET_VALUE
@@ -218,14 +287,32 @@ module VagrantPlugins
         # Subnet is nil by default otherwise we'd launch into VPC.
         @subnet_id = nil if @subnet_id == UNSET_VALUE
 
+        # IAM Instance profile arn/name is nil by default.
+        @iam_instance_profile_arn   = nil if @iam_instance_profile_arn  == UNSET_VALUE
+        @iam_instance_profile_name  = nil if @iam_instance_profile_name == UNSET_VALUE
+
         # By default we don't use an IAM profile
         @use_iam_profile = false if @use_iam_profile == UNSET_VALUE
 
         # User Data is nil by default
         @user_data = nil if @user_data == UNSET_VALUE
 
+<<<<<<< HEAD
         # Don't attach instance to any ELB by default
         @elb = nil if @elb == UNSET_VALUE
+=======
+        # default false
+        @terminate_on_shutdown = false if @terminate_on_shutdown == UNSET_VALUE
+
+        # default to nil
+        @ssh_host_attribute = nil if @ssh_host_attribute == UNSET_VALUE
+
+        # default false
+        @monitoring = false if @monitoring == UNSET_VALUE
+
+        # default false
+        @ebs_optimized = false if @ebs_optimized == UNSET_VALUE
+>>>>>>> mitchellh/master
 
         # Compile our region specific configurations only within
         # NON-REGION-SPECIFIC configurations.
@@ -269,7 +356,7 @@ module VagrantPlugins
               config.secret_access_key.nil?
           end
 
-          errors << I18n.t("vagrant_aws.config.ami_required") if config.ami.nil?
+          errors << I18n.interpolate("vagrant_aws.config.ami_required", :region => @region)  if config.ami.nil?
         end
 
         { "AWS Provider" => errors }
