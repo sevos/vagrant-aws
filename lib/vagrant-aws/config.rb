@@ -297,10 +297,8 @@ module VagrantPlugins
         # User Data is nil by default
         @user_data = nil if @user_data == UNSET_VALUE
 
-<<<<<<< HEAD
         # Don't attach instance to any ELB by default
         @elb = nil if @elb == UNSET_VALUE
-=======
         # default false
         @terminate_on_shutdown = false if @terminate_on_shutdown == UNSET_VALUE
 
@@ -312,7 +310,6 @@ module VagrantPlugins
 
         # default false
         @ebs_optimized = false if @ebs_optimized == UNSET_VALUE
->>>>>>> mitchellh/master
 
         # Compile our region specific configurations only within
         # NON-REGION-SPECIFIC configurations.
